@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">UzNavigator</string>
+    <string name="search_hint">Search in Uzbekistan…</string>
+    <string name="navigate">Navigate</string>
+    <string name="stop_navigation">Stop</string>
+    <string name="my_location">My Location</string>
+    <string name="saved_places">Saved Places</string>
+    <string name="save_place">Save Place</string>
+    <string name="place_name_hint">Place name</string>
+    <string name="searching">Searching…</string>
+    <string name="no_results">No results found</string>
+    <string name="route_calculating">Calculating route…</string>
+    <string name="route_failed">Could not find a route</string>
+    <string name="location_permission_rationale">Location access is needed for navigation</string>
+    <string name="km_h">km/h</string>
+    <string name="speed_limit">Speed limit</string>
+    <string name="eta">ETA</string>
+    <string name="distance">Distance</string>
+    <string name="sign_in">Sign In</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="car_search_hint">Where to?</string>
+    <string name="car_navigating">Navigating</string>
+    <string name="car_stop">Stop</string>
+</resources>

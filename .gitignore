@@ -1,0 +1,29 @@
+# ─── Secrets (NEVER COMMIT) ──────────────────────────────
+local.properties
+gradle.properties
+
+# ─── Build artifacts ─────────────────────────────────────
+build/
+.gradle/
+*.apk
+*.aab
+captures/
+build-log.txt
+build_log.txt
+build-err.txt
+build.pid
+screen-pre-fix.png
+
+# ─── Android Studio / IntelliJ ───────────────────────────
+.idea/
+*.iml
+*.iws
+.DS_Store
+local.properties
+
+# ─── Native ──────────────────────────────────────────────
+*.hprof
+
+# ─── Misc ────────────────────────────────────────────────
+.cxx/
+.kotlin/

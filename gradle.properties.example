@@ -1,0 +1,14 @@
+android.useAndroidX=true
+android.enableJetifier=true
+kotlin.code.style=official
+org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+
+# ─── ACTION REQUIRED ────────────────────────────────────────────────────
+# 1. Copy this file to gradle.properties (without the .example suffix)
+# 2. Replace the value below with your real Mapbox SECRET token
+# 3. Get a free token at: https://account.mapbox.com → Tokens → Create a secret token
+# 4. Required scopes: DOWNLOADS:READ
+MAPBOX_DOWNLOADS_TOKEN=sk.PASTE_YOUR_SECRET_TOKEN_HERE
+# ────────────────────────────────────────────────────────────────────────

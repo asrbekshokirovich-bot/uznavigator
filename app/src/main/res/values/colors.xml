@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand -->
+    <color name="primary">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="accent">#00BCD4</color>
+
+    <!-- Text colors (forced light theme) -->
+    <color name="text_primary">#1A1A1A</color>
+    <color name="text_secondary">#666666</color>
+    <color name="text_hint">#9E9E9E</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="ripple_light">#1F000000</color>
+
+    <!-- Navigation HUD (always dark) -->
+    <color name="nav_hud_bg">#E8000000</color>
+    <color name="nav_hud_text">#FFFFFF</color>
+    <color name="nav_hud_secondary">#B0BEC5</color>
+
+    <!-- Speed limit states -->
+    <color name="speed_under_border">#4CAF50</color>
+    <color name="speed_under_fill">#E8F5E9</color>
+    <color name="speed_under_text">#1B5E20</color>
+
+    <color name="speed_warning_border">#FF9800</color>
+    <color name="speed_warning_fill">#FFF3E0</color>
+    <color name="speed_warning_text">#E65100</color>
+
+    <color name="speed_over_border">#F44336</color>
+    <color name="speed_over_fill">#FFEBEE</color>
+    <color name="speed_over_text">#B71C1C</color>
+
+    <color name="speed_unknown_border">#78909C</color>
+    <color name="speed_unknown_text">#546E7A</color>
+
+    <!-- Map UI -->
+    <color name="map_card_bg">#FFFFFFFF</color>
+    <color name="surface_dark">#1E1E1E</color>
+
+    <!-- UZ Road sign colors (matches real signage) -->
+    <color name="road_sign_red">#E53935</color>
+    <color name="road_sign_red_dark">#B71C1C</color>
+    <color name="road_sign_white">#FFFFFF</color>
+    <color name="road_sign_text">#1A1A1A</color>
+    <color name="road_sign_no_limit_bg">#212121</color>
+
+    <!-- Stop nav button -->
+    <color name="stop_btn_bg">#D32F2F</color>
+    <color name="stop_btn_pressed">#B71C1C</color>
+</resources>

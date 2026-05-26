@@ -1,0 +1,260 @@
+package com.uznavigator.app
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Bundle
+import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.location.LocationServices
+import com.mapbox.geojson.Point
+import com.mapbox.maps.Style
+import com.mapbox.maps.plugin.animation.camera
+import com.mapbox.maps.plugin.locationcomponent.location
+import com.mapbox.navigation.base.extensions.applyDefaultNavigationOptions
+import com.mapbox.navigation.base.extensions.applyLanguageAndVoiceUnitOptions
+import com.mapbox.navigation.base.options.NavigationOptions
+import com.mapbox.navigation.base.route.NavigationRoute
+import com.mapbox.navigation.base.route.NavigationRouterCallback
+import com.mapbox.navigation.base.route.RouterFailure
+import com.mapbox.navigation.base.route.RouterOrigin
+import com.mapbox.navigation.core.MapboxNavigation
+import com.mapbox.navigation.core.MapboxNavigationProvider
+import com.mapbox.navigation.core.directions.session.RoutesObserver
+import com.mapbox.navigation.core.trip.session.LocationMatcherResult
+import com.mapbox.navigation.core.trip.session.LocationObserver
+import com.mapbox.navigation.core.trip.session.RouteProgressObserver
+import com.mapbox.navigation.ui.maps.camera.NavigationCamera
+import com.mapbox.navigation.ui.maps.camera.data.MapboxNavigationViewportDataSource
+import com.mapbox.navigation.ui.maps.camera.state.NavigationCameraState
+import com.mapbox.navigation.ui.maps.location.NavigationLocationProvider
+import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineApi
+import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
+import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineOptions
+import com.uznavigator.app.databinding.ActivityNavigationBinding
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import com.mapbox.api.directions.v5.models.RouteOptions
+
+class NavigationActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_DEST_LAT = "dest_lat"
+        const val EXTRA_DEST_LNG = "dest_lng"
+        const val EXTRA_DEST_NAME = "dest_name"
+    }
+
+    private lateinit var binding: ActivityNavigationBinding
+    private lateinit var mapboxNavigation: MapboxNavigation
+    private lateinit var navigationCamera: NavigationCamera
+    private lateinit var viewportDataSource: MapboxNavigationViewportDataSource
+    private lateinit var routeLineApi: MapboxRouteLineApi
+    private lateinit var routeLineView: MapboxRouteLineView
+    private val navigationLocationProvider = NavigationLocationProvider()
+    private var isCameraTracking = true
+
+    // ── Observers ──────────────────────────────────────────────────────────
+
+    private val locationObserver = object : LocationObserver {
+        override fun onNewRawLocation(rawLocation: Location) {}
+        override fun onNewLocationMatcherResult(result: LocationMatcherResult) {
+            navigationLocationProvider.changePosition(result.enhancedLocation, result.keyPoints)
+            viewportDataSource.onLocationChanged(result.enhancedLocation)
+            viewportDataSource.evaluate()
+
+            // Navigation SDK 2.x: SpeedLimit.speedKmph is already in km/h
+            val limitKph: Int? = result.speedLimit?.speedKmph
+            val speedKph = (result.enhancedLocation.speed * 3.6).roundToInt()
+
+            runOnUiThread {
+                binding.speedLimitView.updateSpeedLimit(limitKph)
+                binding.speedLimitView.updateCurrentSpeed(speedKph)
+            }
+
+            NavigationState.update {
+                copy(speedLimitKph = limitKph, currentSpeedKph = speedKph)
+            }
+        }
+    }
+
+    private val routeProgressObserver = RouteProgressObserver { progress ->
+        viewportDataSource.onRouteProgressChanged(progress)
+        viewportDataSource.evaluate()
+
+        val distM: Double = (progress.currentLegProgress?.currentStepProgress?.distanceRemaining ?: 0f).toDouble()
+        val instruction = progress.bannerInstructions?.primary()?.text()
+        val durationSec = progress.durationRemaining
+        val totalM = progress.distanceRemaining
+
+        runOnUiThread {
+            binding.distanceText.text = formatDistance(distM)
+            binding.streetNameText.text = instruction ?: ""
+            binding.etaText.text = formatEta(durationSec)
+            binding.totalDistanceText.text = formatDistance(totalM.toDouble())
+        }
+
+        NavigationState.update {
+            copy(
+                nextInstruction = instruction,
+                distanceToNextMeters = distM,
+                etaMinutes = (durationSec / 60).roundToInt(),
+                totalDistanceKm = totalM / 1000.0
+            )
+        }
+    }
+
+    private val routesObserver = RoutesObserver { result ->
+        routeLineApi.setNavigationRoutes(result.navigationRoutes) { value ->
+            binding.mapView.getMapboxMap().getStyle { style ->
+                routeLineView.renderRouteDrawData(style, value)
+            }
+        }
+        NavigationState.update { copy(isNavigating = result.navigationRoutes.isNotEmpty()) }
+    }
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityNavigationBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        val destLat = intent.getDoubleExtra(EXTRA_DEST_LAT, 0.0)
+        val destLng = intent.getDoubleExtra(EXTRA_DEST_LNG, 0.0)
+        val destName = intent.getStringExtra(EXTRA_DEST_NAME) ?: ""
+
+        binding.streetNameText.text = "To: $destName"
+
+        initNavigation()
+        setupCamera()
+        setupRouteLines()
+        setupButtons()
+
+        getCurrentLocation { origin ->
+            requestRoute(origin, Point.fromLngLat(destLng, destLat))
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        mapboxNavigation.registerLocationObserver(locationObserver)
+        mapboxNavigation.registerRoutesObserver(routesObserver)
+        mapboxNavigation.registerRouteProgressObserver(routeProgressObserver)
+        mapboxNavigation.startTripSession()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        mapboxNavigation.unregisterLocationObserver(locationObserver)
+        mapboxNavigation.unregisterRoutesObserver(routesObserver)
+        mapboxNavigation.unregisterRouteProgressObserver(routeProgressObserver)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        routeLineApi.cancel()
+        NavigationState.reset()
+        MapboxNavigationProvider.destroy()
+    }
+
+    // ── Setup ──────────────────────────────────────────────────────────────
+
+    private fun initNavigation() {
+        mapboxNavigation = MapboxNavigationProvider.create(
+            NavigationOptions.Builder(this)
+                .accessToken(BuildConfig.MAPBOX_PUBLIC_TOKEN)
+                .build()
+        )
+        binding.mapView.getMapboxMap().loadStyleUri(Style.TRAFFIC_DAY)
+        binding.mapView.location.apply {
+            setLocationProvider(navigationLocationProvider)
+            enabled = true
+        }
+    }
+
+    private fun setupCamera() {
+        viewportDataSource = MapboxNavigationViewportDataSource(binding.mapView.getMapboxMap())
+        navigationCamera = NavigationCamera(
+            binding.mapView.getMapboxMap(),
+            binding.mapView.camera,
+            viewportDataSource
+        )
+        navigationCamera.requestNavigationCameraToFollowing()
+
+        navigationCamera.registerNavigationCameraStateChangeObserver { state ->
+            isCameraTracking = state == NavigationCameraState.FOLLOWING
+            binding.recenterFab.visibility =
+                if (!isCameraTracking) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun setupRouteLines() {
+        val options = MapboxRouteLineOptions.Builder(this)
+            .withRouteLineBelowLayerId("road-label")
+            .build()
+        routeLineApi = MapboxRouteLineApi(options)
+        routeLineView = MapboxRouteLineView(options)
+    }
+
+    private fun setupButtons() {
+        binding.stopNavBtn.setOnClickListener {
+            mapboxNavigation.setNavigationRoutes(emptyList())
+            finish()
+        }
+        binding.recenterFab.setOnClickListener {
+            navigationCamera.requestNavigationCameraToFollowing()
+        }
+    }
+
+    // ── Navigation logic ───────────────────────────────────────────────────
+
+    private fun getCurrentLocation(callback: (Point) -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) return
+
+        LocationServices.getFusedLocationProviderClient(this).lastLocation
+            .addOnSuccessListener { loc: Location? ->
+                val origin = loc?.let { Point.fromLngLat(it.longitude, it.latitude) }
+                    ?: Point.fromLngLat(69.2401, 41.2995) // fallback: Tashkent center
+                callback(origin)
+            }
+    }
+
+    private fun requestRoute(origin: Point, destination: Point) {
+        val routeOptions = RouteOptions.builder()
+            .applyDefaultNavigationOptions()
+            .applyLanguageAndVoiceUnitOptions(this)
+            .coordinatesList(listOf(origin, destination))
+            .alternatives(true)
+            .build()
+
+        mapboxNavigation.requestRoutes(routeOptions, object : NavigationRouterCallback {
+            override fun onRoutesReady(routes: List<NavigationRoute>, routerOrigin: RouterOrigin) {
+                if (routes.isNotEmpty()) {
+                    mapboxNavigation.setNavigationRoutes(routes)
+                }
+            }
+            override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
+                runOnUiThread {
+                    binding.streetNameText.text = getString(R.string.route_failed)
+                }
+            }
+            override fun onCanceled(routeOptions: RouteOptions, routerOrigin: RouterOrigin) {}
+        })
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private fun formatDistance(meters: Double): String = when {
+        meters >= 1000 -> "${"%.1f".format(meters / 1000)} km"
+        else -> "${meters.roundToInt()} m"
+    }
+
+    private fun formatEta(seconds: Double): String {
+        val mins = (seconds / 60).roundToInt()
+        return if (mins >= 60) "${mins / 60}h ${mins % 60}m" else "$mins min"
+    }
+}
