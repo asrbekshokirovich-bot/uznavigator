@@ -1,14 +1,9 @@
 package com.uznavigator.app
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.location.LocationServices
 import com.mapbox.geojson.Point
 import com.mapbox.maps.Style
 import com.mapbox.maps.plugin.animation.camera
@@ -34,7 +29,6 @@ import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineApi
 import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineOptions
 import com.uznavigator.app.databinding.ActivityNavigationBinding
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import com.mapbox.api.directions.v5.models.RouteOptions
 
@@ -54,6 +48,8 @@ class NavigationActivity : AppCompatActivity() {
     private lateinit var routeLineView: MapboxRouteLineView
     private val navigationLocationProvider = NavigationLocationProvider()
     private var isCameraTracking = true
+    private var routeRequested = false
+    private var pendingDestination: Point? = null
 
     // ── Observers ──────────────────────────────────────────────────────────
 
@@ -63,6 +59,19 @@ class NavigationActivity : AppCompatActivity() {
             navigationLocationProvider.changePosition(result.enhancedLocation, result.keyPoints)
             viewportDataSource.onLocationChanged(result.enhancedLocation)
             viewportDataSource.evaluate()
+
+            // Request the route from the first accurate SDK location instead of
+            // lastLocation, which can be stale or null and produce a route from
+            // the wrong origin (e.g. the Tashkent-center fallback).
+            val dest = pendingDestination
+            if (!routeRequested && dest != null) {
+                routeRequested = true
+                val origin = Point.fromLngLat(
+                    result.enhancedLocation.longitude,
+                    result.enhancedLocation.latitude
+                )
+                requestRoute(origin, dest)
+            }
 
             // Navigation SDK 2.x: SpeedLimit.speedKmph is already in km/h
             val limitKph: Int? = result.speedLimit?.speedKmph
@@ -127,14 +136,12 @@ class NavigationActivity : AppCompatActivity() {
 
         binding.streetNameText.text = "To: $destName"
 
+        pendingDestination = Point.fromLngLat(destLng, destLat)
+
         initNavigation()
         setupCamera()
         setupRouteLines()
         setupButtons()
-
-        getCurrentLocation { origin ->
-            requestRoute(origin, Point.fromLngLat(destLng, destLat))
-        }
     }
 
     override fun onStart() {
@@ -244,19 +251,6 @@ class NavigationActivity : AppCompatActivity() {
     }
 
     // ── Navigation logic ───────────────────────────────────────────────────
-
-    private fun getCurrentLocation(callback: (Point) -> Unit) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED
-        ) return
-
-        LocationServices.getFusedLocationProviderClient(this).lastLocation
-            .addOnSuccessListener { loc: Location? ->
-                val origin = loc?.let { Point.fromLngLat(it.longitude, it.latitude) }
-                    ?: Point.fromLngLat(69.2401, 41.2995) // fallback: Tashkent center
-                callback(origin)
-            }
-    }
 
     private fun requestRoute(origin: Point, destination: Point) {
         val routeOptions = RouteOptions.builder()
