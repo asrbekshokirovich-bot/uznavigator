@@ -176,6 +176,41 @@ class NavigationActivity : AppCompatActivity() {
 
     private fun setupCamera() {
         viewportDataSource = MapboxNavigationViewportDataSource(binding.mapView.getMapboxMap())
+
+        // ── Google Maps / Yandex Navigator-style camera ──────────────────────
+        // Key insights from researching both apps:
+        //   1. CLOSE zoom (~17.5) — street-level detail, ~150m visible ahead
+        //   2. 3D pitch ~55° — forward-leaning driving perspective
+        //   3. Puck in lower-third of screen — road ahead is visible above
+        //   4. Bearing follows TRAVEL DIRECTION (auto-rotates map as you turn)
+        //   5. NO huge "look-ahead" — focus is on user position + immediate next 100-200m
+        val density = resources.displayMetrics.density
+        fun dp(v: Float) = (v * density).toDouble()
+
+        // Padding: larger TOP than BOTTOM pushes the puck DOWN into the lower-third.
+        // Bottom padding only avoids the speed-limit widget + stop button area.
+        viewportDataSource.followingPadding = com.mapbox.maps.EdgeInsets(
+            /* top    */ dp(380f),   // BIG → forces puck to lower 1/3 of screen
+            /* left   */ dp(40f),
+            /* bottom */ dp(140f),   // just above the bottom UI elements
+            /* right  */ dp(40f)
+        )
+        viewportDataSource.overviewPadding = com.mapbox.maps.EdgeInsets(
+            dp(160f), dp(40f), dp(160f), dp(40f)
+        )
+
+        // FORCE close-up street-level zoom (overrides Mapbox's "smart" auto-zoom
+        // which was showing 2km ahead instead of street detail)
+        viewportDataSource.followingZoomPropertyOverride(17.5)
+
+        // FORCE 3D forward tilt for that Google Maps driving feel
+        viewportDataSource.followingPitchPropertyOverride(55.0)
+
+        // (Bearing is NOT overridden — Mapbox auto-rotates to user heading,
+        //  which matches Google Maps "heading-up" behavior)
+
+        viewportDataSource.evaluate()
+
         navigationCamera = NavigationCamera(
             binding.mapView.getMapboxMap(),
             binding.mapView.camera,
